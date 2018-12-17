@@ -1,0 +1,78 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+
+pid_t pid_1, pid_2;	
+int *read_fd, *write_fd;
+//or use global vary 
+void func_father(int signum){
+	kill(pid_1, SIGUSR1);
+	kill(pid_2, SIGUSR2);
+}
+void func_child_1(int signum){ 
+	printf("Child Process 1 is killed by parent!\n");
+	exit(0);
+}
+
+void func_child_2(int signum){
+	printf("\nChild Process 2 is killed by parent!\n");
+	exit(0);
+}
+
+int main()
+{	int x = 1, result = -1;;
+	int fd[2], status = -1;
+	char sendbuf[20], readbuf[20];
+	result = pipe(fd);//create pipe
+	read_fd = &fd[0];//read pipe
+	write_fd = &fd[1];//write pipe
+	if (-1 == result) {
+		printf("fail to create pipe!\n");
+		return -1;
+	}
+	pid_1 = fork();//create process
+	if (-1 == pid_1) {
+		printf("fail to fork child process 1!\n");
+		return -1;
+	}
+	if (0 == pid_1) {//return child process 1
+		signal(SIGINT, SIG_IGN);//ignore SIGINT
+		signal(SIGUSR1, func_child_1);
+		while(1){
+			memset(sendbuf, 0, 100);
+			sprintf(sendbuf, "I send you %d times\n", x++);
+			write(*write_fd, sendbuf, strlen(sendbuf));
+			sleep(1);
+		}
+	}
+	else { 
+		pid_2 = fork();//create process 2
+		if (-1 == pid_2) {
+			printf("fail to fork child process 2!\n");
+			return -1;
+		}
+		if (0 == pid_2) {
+			signal(SIGINT, SIG_IGN);
+			signal(SIGUSR2, func_child_2);
+			while (1) {
+				memset(readbuf, 0, 100);
+				read(*read_fd, readbuf, sizeof(readbuf));//strlen will fail
+				printf("%s", readbuf);
+			}
+		}
+		else {
+			signal(SIGINT, func_father);
+			waitpid(pid_1, &status, 0);
+			waitpid(pid_2, &status, 0);
+			close(*read_fd);
+			close(*write_fd);
+			printf("Parent Process is Killed!\n");
+			exit(0);
+		}
+	}
+    return 0;
+}
